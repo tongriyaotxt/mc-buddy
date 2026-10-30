@@ -1009,10 +1009,18 @@ public class MobDefenseChain extends SingleTaskChain {
                 // Declining here is the whole fix: hand the tick back, let it go eat.
                 mdFleeNoThreat++;
                 runAwayTask = null;
+                // Not bidding is not enough: a task already handed to the chain keeps being polled
+                // and keeps reporting FINISHED at a place it no longer has any reason to be. Clear
+                // it, or "declined" still looks like "running" from outside.
+                setTask(null);
                 long nowNoThreat = System.currentTimeMillis();
                 if (mdFleeNoThreat == 1 || nowNoThreat - lastFleeNoThreatLogMs > NO_THREAT_LOG_MS) {
                     lastFleeNoThreatLogMs = nowNoThreat;
-                    Debug.logInternal("[mobdef] flee declined, nothing to run from (n=" + mdFleeNoThreat
+                    // Straight to stdout, not Debug.logInternal: the internal logger is gated on
+                    // logLevel == ALL, and a diagnosis you cannot read on a default install is
+                    // just a comment. Rate-limited to two lines a minute, so it cannot become the
+                    // next log flood it exists to prevent.
+                    System.out.println("[mobdef] flee declined, nothing to run from (n=" + mdFleeNoThreat
                             + " hp=" + mod.getPlayer().getHealth()
                             + " food=" + mod.getPlayer().getHungerManager().getFoodLevel() + ")");
                 }
@@ -1334,9 +1342,24 @@ public class MobDefenseChain extends SingleTaskChain {
             // THE SUSPECT: this re-sets an OLD flee task and returns the PREVIOUS priority, so the
             // chain keeps the tick without choosing to flee or fight again -- which is exactly what
             // was measured (mdWon in the thousands, mdFlee and mdFight both zero, ~17 deaths a run).
-            mdRet8++;
-            setTask(runAwayTask);
-            return cachedLastPriority;
+            //
+            // ⛔ AND IT HAS TO ASK THE SAME QUESTION THE BID DOES (2026-10-30). A retreat outlives
+            // the thing it was retreating from: the mob walks away, or the route ends in the air so
+            // `isFinished` stays false, and this branch then re-publishes the OLD priority (70) for
+            // as long as that task object lives. Measured on the live client after a zombie horde
+            // was cleared: `fleeLive(0 danger(s))` kept printing while the body walked another
+            // seventeen blocks to a destination with nothing behind it. Bounded (it stops at the
+            // destination) but the same class of bug as the four-hour freeze, so the same gate
+            // applies: no nameable danger, no claim on the tick.
+            if (!hasSomethingToFleeFrom(mod)) {
+                mdFleeNoThreat++;
+                runAwayTask = null;
+                setTask(null);
+            } else {
+                mdRet8++;
+                setTask(runAwayTask);
+                return cachedLastPriority;
+            }
         } else {
             runAwayTask = null;
         }

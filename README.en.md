@@ -29,10 +29,11 @@ do the chore, stay quiet, and never just stand there.**
 | Three companions on one server | ✅ | 3 online / 3 heartbeats / **only the one holding the speaking token acts** / one voice stream |
 | Goal decomposition, prerequisites, fallbacks | ✅ | Gate ⑮ (5 checks), ⑯ (7 checks), ⑫ (no cow → no leather → step down to iron → wooden sword) |
 | Dig / place (the "ok but nothing changed" class) | ✅ | Grass block: progress 0.3→0.9→air within 1 s; three distinct placement failures |
+| No more fleeing from an empty field | ✅ | With nothing hostile around the chain declines to bid: **0** `fleeLive(0 danger)` lines in 45 s (23 before the fix); with real mobs it still flees (`(2 danger(s))`) |
 | A headless client that still works | ✅ | Window 1 px offscreen, crosshair still tracks (render loop is alive) |
 | Long run | ✅ | 120 min: survival **1.0**, RSS slope **0.12 MB/min**, `error`/`incident`/`death` all 0 |
 | Packaged exe (no Python needed) | ✅ | `Buddy.exe` 74.8 MB, `--selftest` OK, `--run-py` channel works |
-| Self-check gate | ✅ | **32/32** in ~45 s (`tools/companion_gate.py`) |
+| Self-check gate | ✅ | **32/32** in ~45 s (`tools/companion_gate.py`); live items report SKIP when no client is up |
 
 **Five half-green items** (they work, they just have not been re-verified in the field):
 guard melee leg, launcher, console v2, melee clearing, job-stall detection.
