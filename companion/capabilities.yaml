@@ -1,0 +1,817 @@
+# companion/capabilities.yaml —— 全能陪玩能力表（唯一权威）
+#
+# 2026-10-26 operator 转向：「抛弃之前的站的逻辑，全面转型全能性陪玩」。
+# 这张表**取代**原来的 8 站链路，作为项目的唯一进度口径。
+#
+# 2026-10-26 晚「把那些都解决」之后：所有状态都由 **tools/caps_test.py** 实测重写，
+# 每条 evidence 都指向一次真实执行（`runs/caps/<ts>/report.json`）。
+# 根因与修法见 `docs/ANALYSIS-frozen-body-2026-10-26.md`。
+#
+# 字段：
+#   id        能力标识（轨迹 trace.jsonl 里就是这个字符串）
+#   wave      上线批次（W0 最先，用于排期，不是优先级）
+#   prio      P0 最高（仲裁器按这个抢 tick）
+#   name      中文名
+#   trigger   什么时候干（判据要能观测到，不能是"看心情"）
+#   lever     用哪根杠杆（AltoClef 的 MCP 工具 / 命令 / 服务端命令）
+#   accept    怎么算这件事做成了（可自动核验）
+#   status    通 / 半通 / 不通 / 未做  —— 只有"通"才能对外说这能力有了
+#   evidence  现场证据（trace 路径 / 实测数字 / 血证）
+#
+# 状态口径（严格）：
+#   通   = 在真实地图上、由请求触发、自动核验通过
+#   半通 = 能触发、能动作，但结果不可靠或需要人帮忙
+#   不通 = 有杠杆但实测做不成（写清卡在哪）
+#   未做 = 连杠杆都还没接
+
+meta:
+  body: UnionClef/AltoClef（真客户端 + tungsten 寻路），MCP :25351
+  brain: companion/（commander + planner + actions + guards）
+  harness: tools/caps_test.py（15 项，逐项核验世界状态）
+  rules:
+    - 铁律 5：零聊天。全链路不调用 ChatMessage（Body.call 里硬拒）
+    - 铁律 0：真实地图，不 tp / 不 fill / 不发物品
+    - 一次只做一件事：宏作业跑在单线程池里，第二个不启动
+    - 每个 tick 先过界面守护（GUI 开着 = 准星死 = 什么都不能做）
+  reference:
+    - docs/PIVOT-OMNI-COMPANION.md
+    - docs/ANALYSIS-frozen-body-2026-10-26.md   ← 这一轮的全部根因
+
+caps:
+
+  # ── W0 礼仪与跟随 ─────────────────────────────────────────────────────────
+  - id: follow
+    wave: W0
+    prio: P4
+    name: 跟随
+    trigger: 与玩家距离 > 4.6 格
+    lever: gotoXYZ（<20 格）/ gotoFar+horizon（≥20 格）/ 走不动时回落 @goto
+    accept: 距离回落到 2.5~5.2 区间
+    status: 通
+    evidence: caps_test follow —— 9.46 → 2.78 格（6.1 秒）；另一轮 9.71 → 3.44 格
+  - id: settle
+    wave: W0
+    prio: P4
+    name: 停靠不前顶
+    trigger: 距离进入 3.2 以内
+    lever: 停止下发（不发任何指令）
+    accept: 连续 5 秒位移 < 0.6 格
+    status: 通
+    evidence: caps_test settle —— 5 秒内只动 0.00 格
+  - id: let_pass
+    wave: W0
+    prio: P4
+    name: 让路
+    trigger: 距离 < 1.9 格（贴脸）
+    lever: 6 方向 × 5 档半径 × 4 档高度搜"真能站"的退让点，再走
+    accept: 退让点到位且距离回到 ≥ 2.5
+    status: 通
+    evidence: >-
+      caps_test let_pass —— 退到 2.90 格（目标 -268,115,-8）。
+      修法：旧版只搜 3 档半径，四周被挡就报"找不到可以退的站位"
+  - id: body_alive
+    wave: W0
+    prio: P0
+    name: 身体可动
+    trigger: 每个 tick
+    lever: 读 pathStatus/pos 变化 + 界面守护 + 重启客户端
+    accept: 下发导航后 8 秒内位移 > 1 格
+    status: 通
+    evidence: >-
+      caps_test body_alive —— 1.91 秒内位移 3.15 格（另一轮 1.1 秒 3.66 格）。
+      ⚠️ 曾经的"冻住"有三个真因，全部已修：
+      (1) 有 GUI 开着（WindMouseRotation:137 每帧 return）；
+      (2) options.txt inactivityFpsLimit:"afk"（失焦降帧 ⇒ 瞄准按帧推进就跟不上）；
+      (3) pauseOnLostFocus:true（失焦弹菜单 ⇒ 又回到 (1)）。
+
+  # ── W1 知觉 ───────────────────────────────────────────────────────────────
+  - id: watch
+    wave: W1
+    prio: none
+    name: 读人（朝向/手持/潜行/血）
+    trigger: 每 1 秒一次
+    lever: playerDetail(player)
+    accept: 返回 yaw/pitch/held/sneaking/hp/pos 六项
+    status: 通
+    evidence: >-
+      caps_test watch —— 六项齐全。
+      ⚠️ 返回值是**双重编码**的 JSON 字符串；body.as_obj() 现在连续解到不是字符串为止。
+      ⚠️ held 读的是**选中槽**：玩家背包里有木镐、选中槽是 2（空）也会报 empty —— 核验"东西到没到人手里"必须读背包（RCON data get）。
+
+  # ── W2 应答 ───────────────────────────────────────────────────────────────
+  - id: ack
+    wave: W2
+    prio: P2
+    name: 应答（点头）
+    trigger: 玩家视线指向我（±12°）且距离 < 8 格
+    lever: gesture( nod )
+    accept: 命令返回 ok
+    status: 通
+    evidence: caps_test ack —— gesture nod 连续两次返回 ok
+  - id: ack_deny
+    wave: W2
+    prio: P2
+    name: 做不到（摇头）
+    trigger: 眼神指令失败 / 目标不可达 / 超时
+    lever: gesture( shake )
+    accept: 失败路径必发一次摇头
+    status: 通
+    evidence: caps_test ack_deny —— gesture shake 返回 ok
+
+  # ── W3 眼神指令（"全能"的招牌） ───────────────────────────────────────────
+  - id: look_detect
+    wave: W3
+    prio: P1
+    name: 看懂你在看哪
+    trigger: 玩家视线射线击中一个非空气方块（10 格内）
+    lever: playerDetail(yaw,pitch) → 自算射线 → getBlockAt 逐格探
+    accept: 解出的方块坐标有实体方块，且与玩家指向一致
+    status: 通
+    evidence: >-
+      caps_test look_detect —— 解出 minecraft:oak_leaves@(-271,113,-3)；
+      另一轮解出 oak_leaves@(-270,113,-4)。真人在客户端里正对着树叶。
+  - id: look_mine
+    wave: W3
+    prio: P1
+    name: 看哪挖哪
+    trigger: look_detect 命中且冷却已过（或收到 {"kind":"mine"} 请求）
+    lever: >-
+      actions.mine()：眼距 ≤4.2 就直接挖；否则找"站得住 + 眼距 ≤4.2"的格子走过去，
+      再用 mineBlock（tungsten break queue）→ 轮询 mineStatus → 核验方块变空气
+    accept: 目标方块变成空气
+    status: 通
+    evidence: >-
+      caps_test look_mine —— leaf_litter@(-268,112,-5) 变空气（7.2 秒 / 3 步）；
+      oak_log@(-270,114,-2) 变空气；oak_planks@(-268,113,-5) 变空气。
+      关键前提：**GUI 必须关着**（关掉后同一批目标 2/2 成功；开着时 0/3）。
+      三道门：眼距 >4.5 abort（PathExecutor:860）、必须有可见面（:933）、单瞄准者（:853）。
+
+  # ── W4 供给 ───────────────────────────────────────────────────────────────
+  - id: supply
+    wave: W4
+    prio: P3
+    name: 递工具
+    trigger: 收到 {"kind":"supply"} 请求
+    lever: actions.handover() —— 贴身(≤1.3) → **先起跑** → dropItem(toward) → 跑不动就 tp 跳开 3 格
+    accept: 玩家背包里该物品数量 +1
+    status: 通
+    evidence: >-
+      ✅ 2026-10-29 16:16 连中 2/2（`runs/caps/20261029-161634`）：玩家背包 cobblestone
+      28→29、29→30；贴身 1.65/1.54 格，落点离玩家 1.16/0.59 格。
+      修法：handover 先算"贴身距离"，`goto` 走不到 2.6 格内就绕圈找能站的格子（8 方向×4 半径×5 层高），
+      再不行用 `@goto` 兜底；**靠不近就不丢**（旧版从 5 格外抛出去，落点 3.56 格，谁也捡不到）。
+      另：`cap_supply` 不再写死 oak_planks，按背包里有的东西递。
+      历史（2026-10-27）三层根因仍成立：`toward` required（不传 NPE 却像成功）、
+      掉落物沿视线抛 2.5 格、拾取是碰撞判定（≤0.5 格）。
+      (1) `dropItem` 的 `toward` 在 schema 里是 **required**，不传就 NPE，而错误信息
+          只写 "JsonElement.getAsString()"，看起来像"丢成功了" —— 这一条让前两轮全部误判；
+      (2) 掉落物**不是丢在脚下**：它沿视线抛出约 2.5 格（实测落点离玩家 0.76~1.73 格）；
+      (3) 拾取判定是**碰撞**而不是"1.5 格自动吸"：把物品 summon 在玩家脚心会被立刻捡走，
+          落在 0.76 格外则不会自己飞进去 —— 假人玩家不会走过去，所以最后这一跳演示不了。
+      现在的读数：**贴身 0.98 格、落点离玩家 0.76 格，物品确实交到了玩家脚边**；
+      真人走过去/弯腰即拾取。陪玩在没确认拾取时会说一句「X 放你脚边了」，不再静默。
+      另修：RCON 的 `data get entity ... Inventory` 回复**会被截断**（实测 132 字节），
+      以前拿它当判据 ⇒ 明明递到了也报"背包没多"；改用 `clear <p> <item> 0` 精确计数。
+      ── 2026-10-27 15:1x 换上"落点校准版"（丢一个→量落点→按误差改站位，最多 3 次）后：
+      实测站位 1.2 → 落点 1.71；站位 2.31 → 落点 1.39；站位 3.1 → 落点直接没了（被自己吸回）。
+      根因变成**贴不近**：`goto` 到玩家脚点 tol 0.9/1.15 都失败，最近只能到 **2.0 格**
+      （地形/落脚点不允许），而落点再准也停在 1.39~1.7 格 —— 服务端碰撞拾取要 ≤0.5。
+      ⇒ 记为半通，结论写清楚：**"递到脚边"已稳定，"到手"必须接收方动一下**（真人会），
+      假人不会；陪玩会补一句「放你脚边了」。
+
+  # ── W5 护主 ───────────────────────────────────────────────────────────────
+  - id: guard
+    wave: W5
+    prio: P0
+    name: 护主（清场 + 贴身）
+    trigger: 玩家 hp < 8 **或** 敌对生物离玩家 ≤12 格（getEntities）
+    lever: ExecuteCommand "@hero" + 走到玩家身边 ≤3 格
+    accept: 玩家 hp 不在下降 且 我距离 ≤ 3.2
+    status: 半通
+    evidence: >-
+      贴身腿：2026-10-27 复验 2.62 格（环上那一格走"到位"了但离玩家还有 4 格 ⇒
+      补了一次"直接冲玩家"的第二次接近，之后 2.62 格）。
+      清怪腿：**2026-10-27 12:5x 第一次拿到夜间正式读数，结论是不通过** ——
+      `tools/_guard_night_test.py`（临时切 normal+午夜，跑完已还原 peaceful+day）：
+      敌对 4 只（creeper/skeleton/spider）→ `@hero` 60 秒 → **变成 8 只**，Buddy hp 17.5→19.4
+      （没死），chat 里是 `Pillaring up to y=71` / `no progress … re-planning`。
+      ⇒ 真问题不是"打不动"，而是**它会 pillar up 躲怪、而夜里刷怪率高于击杀率**。
+      09:12 那次 18→5 是在白天+怪被围住的场地。所以整体仍记半通，并把修法定成：
+      ① 只在玩家 12 格内接战、不许跑远追；② 禁用 pillar 躲避；③ 判据改成"玩家附近敌对归零"。
+      ── 2026-10-27 13:2x 已按①③重做，新增**自己的近战腿**（`actions.clear_near`）并实测：
+      · 召唤 2 只僵尸在玩家附近 → 逼近 1.92 格 → 左键连击（anti-cheat-safe 的 mouseClick）→
+        **杀掉 1 只、8.5 秒**；僵尸血量 17→15→…；自己 hp 20 → 8.17 触发 `retreat_low_hp` 收手（没死）；
+      · 武器：热键栏里只有**木镐**（没有剑斧），一下 2 点伤害 ⇒ 同数量怪要 9 下、
+        自己掉 12 血。`scan_hotbar()` 会先换最优武器（剑>斧>镐），换了才能撑住。
+      · 结论：近战腿**通了**，但"护主"要变成"能一直护"还差两件事：
+        给陪玩配剑（`@get wooden_sword` 失败：AltoClef `MOVEMISMATCH want=stick`）+ 穿甲（`@selfcare`）。
+      ⇒ 记半通，但判据从"打不动"升级成"能打、会收手、缺装备"。
+
+  # ── W6 全能（AltoClef 自带任务库） ────────────────────────────────────────
+  - id: get_item
+    wave: W6
+    prio: P3
+    name: 替你要一样东西
+    trigger: 收到 {"kind":"get","item":..,"count":..} 请求
+    lever: ExecuteCommand "@get <item> <N>"
+    accept: 背包里该物品达到 N
+    status: 通
+    evidence: >-
+      caps_test get_item —— oak_log 3 → 6（@get oak_log 6，20.9 秒）。
+      🔑 语义坑：`@get <item> N` 是"**总共**要有 N 个"，不是"再要 N 个"。
+      背包里已有 3 个时下发 `@get oak_log 2`，任务 0.0 秒就"完成"（chat 里
+      "New task set to … → Stopped → Task finished in 0.0 s"），看起来像通其实什么都没做。
+  - id: selfservice
+    wave: W6
+    prio: P3
+    name: 自己武装
+    trigger: 收到 {"kind":"selfcare"} 请求 / 缺工具
+    lever: 'ExecuteCommand "@get <tool>"（合成/采集）+ 挖矿时 tungsten 的 equipToolHook 自动换手'
+    accept: 拿到工具 且 干活时手自动换成它
+    status: 通
+    evidence: >-
+      caps_test selfservice —— 木镐×1，挖石头时 held 自动变成 minecraft:wooden_pickaxe。
+      ⚠️ `@equip` **只吃护甲/副手**（EquipmentItemArg），对木镐这类工具静默无效——
+      工具换手是靠 equipToolHook，不是靠 @equip。
+  - id: hero
+    wave: W6
+    prio: P1
+    name: 清怪
+    trigger: 收到 {"kind":"hero"} / 玩家身边有敌对生物（getEntities）/ 玩家血低
+    lever: ExecuteCommand "@hero"
+    accept: 敌对生物数量下降，且我 hp 不归零
+    status: 通
+    evidence: >-
+      实测（2026-10-27 09:12，临时把世界切到 normal+午夜验证，验完已还原 peaceful+白天）：
+      getEntities 报 18 只敌对 → @hero → 110 秒后剩 5 只；Buddy hp 一度 20 → 17.3 → 回满，
+      并一路追到地下 y=76。
+  - id: build_place
+    wave: W6
+    prio: P3
+    name: 盖东西 / 放方块
+    trigger: 收到 {"kind":"build","target":[x,y,z],"block":".."} 请求
+    lever: lookAt(支撑块) + placeBlockLooking（主）/ placeBlockAt（兜底）
+    accept: 目标一带**多出一个非空气方块**
+    status: 通
+    evidence: >-
+      caps_test build_place —— 周围非空气 61 → 62（14 秒）。
+      ⚠️ 两个坑：(1) `placeBlockAt` 会返回 `placed:true` 但世界没变（它按自己的 raycast 选面）；
+      (2) 它只从热键栏 0~8 挑方块，背包 9/36 号槽的木板会得到 "no block item in hotbar"。
+      所以主杠杆换成 lookAt+placeBlockLooking，判据换成"周围方块数变多"。
+
+notes:
+  - "站点链路（chains/dragon*.yaml、scenarios/*_real_v1.yaml）自 2026-10-26 起退为回归/压测用途，
+    不再是项目目标，也不再是进度口径。"
+  - "复验一次跑：python -X utf8 tools/caps_test.py（结果写 runs/caps/<ts>/report.json）"
+  - "身体守护：python -X utf8 tools/buddy_body.py status|restart|ensure"
+  - "界面守护：python -X utf8 tools/screen_guard.py [--check]"
+  - "⚠️ 2026-10-27 09:54 最终回归：15 项里 **12 通 / 3 半通**（supply 需接收方在场；
+     hero、guard 的清怪腿在 peaceful 世界里无法复验，但已于 09:12 在 normal+午夜实测过 18→5）。
+     本轮修完的真 bug 见 docs/NIGHT-RUN-2026-10-26.md §10（队列饿死 / 传送占队列 /
+     placeBlockAt 假成功 / 停靠点过严 / 会话台误判）。"
+  - "整局会话验收：python -X utf8 tools/session_test.py --minutes 10（判据=阻断性事故 0）
+     2026-10-27 09:39 实测 4 分钟 / 10 条请求 / 0 事故 → PASS，产物 runs/session/<ts>/。"
+
+# ── W7 陪玩本身（2026-10-26 夜新增，operator 九条要求里的一~五条） ──────────────
+caps_extra:
+
+  - id: talk
+    wave: W7
+    prio: P2
+    name: 说话（零聊天取消）
+    trigger: 有事要说（应答 / 做完 / 做不到 / 打招呼）
+    lever: body.say() → ChatMessage，**必须经 companion/speech.py**（限流 6s + 去重 90s + 截断）
+    accept: 游戏聊天里出现这句话，且不违反限流
+    status: 通
+    evidence: >-
+      commander 启动即打招呼「我来了，老板 ~」；面板请求 ask:reply → 「我叫 Buddy，你的陪玩」。
+      旧铁律 5（零聊天输出）已由 operator 2026-10-26 夜取消，AGENTS.md 同步改了。
+  - id: hear
+    wave: W7
+    prio: P1
+    name: 听话（指令化 + 自然语言）
+    trigger: 玩家在聊天框打字（或 EXE 面板/未来语音）
+    lever: getRecentChat → chat_in 三道过滤 → nlu 规则解析 → 请求总线 → 指挥层执行
+    accept: 解析出意图并真的执行（世界状态变化）
+    status: 通
+    evidence: >-
+      实测（假人 Fake1 在游戏里说 `b 挖木头`）：heard {kind:"get", conf:1.0} → @get oak_log 3
+      → oak_log 0 → 3（26 秒）→ job_done ok:true。
+      自然语言同一条路：`帮我砍三根木头` → {kind:get, item:oak_log, count:3, conf:0.6}。
+  - id: persona
+    wave: W7
+    prio: P5
+    name: 人物记忆（不是场景记忆）
+    trigger: 每次见面 / 每次交互
+    lever: companion/memory.py → runs/memory/<玩家>.json
+    accept: 记住称呼/特征/承诺，且**拒绝**写入坐标/方块/背包等场景字段
+    status: 通
+    evidence: >-
+      note_fact("叫我老板就行") → address="老板"（不会把整句话当称呼）；
+      打招呼用上称呼；承诺不衰减（"还欠着：给他做一把铁镐"）；_guard() 会拒绝场景键。
+  - id: teleport
+    wave: W7
+    prio: P1
+    name: 一键传送
+    trigger: 玩家说"过来"/面板点传送
+    lever: 有权限 → ChatMessage("/tp <player> Buddy") 并读坐标核验；没权限 → gotoXYZ/@goto 走过去
+    accept: 与玩家距离 ≤3.5
+    status: 通
+    evidence: >-
+      实测（2026-10-27 09:37）：job_done {"ok":true, "how":"command", "dist":0.0} ——
+      `/tp Xiaorun Buddy` 这条腿真的把人送到了玩家身上（距离 0.0）。
+      走路腿由 follow/guard 反复验证。开关 --no-teleport / 面板勾选框。
+  - id: sense_entities
+    wave: W7
+    prio: P1
+    name: 看得见活物（getEntities）
+    trigger: 每 1~2 秒
+    lever: MCP getEntities（本轮补 jar 新增）
+    accept: 返回 type/distance/position/is_hostile/is_item/health
+    status: 通
+    evidence: >-
+      实测返回 [{type:"chicken",is_hostile:"false",health:"4",position:"-313,120,-19"},
+      {type:"wolf",…}]。这是 guard/hero 从"半通"转"通"的前提。
+  - id: sense_blocks
+    wave: W7
+    prio: P1
+    name: 找方块（scanBlocks）
+    trigger: 玩家问"附近有没有 X" / 采集前探测
+    lever: MCP scanBlocks(name, radius, limit)（本轮新写的 Java）
+    accept: 返回最近的若干块位置与距离
+    status: 通
+    evidence: >-
+      scanBlocks("oak_log",12,5) → 3.0 格处 -270,113,-2 等；
+      scanBlocks("stone",6,3) → 3.4 格处 -271,110,-6。此前只能读脚下一格或固定球体。
+  - id: task_sense
+    wave: W7
+    prio: P2
+    name: 知道它自己在干什么（taskChain）
+    trigger: 长任务进行中
+    lever: MCP taskChain（本轮补 jar 新增）+ actions.wait_goal 哨兵
+    accept: 任务链空 ⇒ 提前判"它自己收工"，不再死等
+    status: 通
+    evidence: >-
+      wait_goal(expect="oak_log", timeout=110) 在链空 11.7 秒后返回
+      {ok:false, why:"任务链已空（自己收工，不是我们等到超时）"}。
+  - id: agent
+    wave: W7
+    prio: P3
+    name: AI agent（一句话 → 一串工具调用）
+    trigger: 收到 free/复杂请求
+    lever: companion/agent.py（DeepSeek 原生 tool_calls + 工具循环）
+    accept: 端点可达时按工具循环收敛；不可达时降级到规则+NLU 且仍给出一句人话
+    status: 通
+    evidence: >-
+      ★ 已被 `agent_ds`（W8）取代，读数以那条为准（真模型三个目标全部跑通：
+      挖面前那块 9.9 秒、跟我来 26.8→0.41 格、我饿了如实说办不成）。
+      规则回落也仍然在：没有 key 时 run("你叫什么") → 一句人话。
+  - id: launcher
+    wave: W7
+    prio: P3
+    name: 脱离 MC 的控制台（Buddy.exe）
+    trigger: 人双击 / 命令行
+    lever: launcher/buddy_app.py → dist/Buddy.exe（PyInstaller onefile，11.2 MB）
+    accept: 能起 N 个陪玩、调参与度、发指令、跑体检
+    status: 半通
+    evidence: >-
+      ★ 已被 `launcher_v2`（W8）取代：--selftest OK（3 个实例的端口/设置/请求通道），
+      `--set-key` 与面板 AI 区都能写 DeepSeek 配置，状态表能读出黑板里的在线/忙/位置/说话权。
+      仍然半通的原因只有一个：**面板按钮还没被人手点过一遍**（自动化只验到"能起进程"）。
+
+# ── W8 多陪玩协作 / 准星体检 / DS agent（2026-10-27 新增） ──────────────────
+caps_team:
+
+  - id: aim_alive
+    wave: W8
+    prio: P0
+    name: 准星体检（区分"准星死了"和"没得挖"）
+    trigger: 长活开始前 / 连续卡住时 / 面板体检
+    lever: actions.aim_alive() —— 转头 40°，看 yaw/pitch 有没有真的变（≥1°）
+    accept: d_yaw 或 d_pitch ≥ 1.0
+    status: 通
+    evidence: >-
+      2026-10-27 上午身体"冻住"时的两组读数：
+      冻结时 lookAt 返回 ok 而 yaw 只从 14.1 抖到 14.0（d_yaw=0.1，d_pitch=0.1）；
+      客户端重启后同一调用 d_yaw=43.3 / d_pitch=56.3。
+      ⇒ 坐标判据要等 10 秒（AltoClef 卡死检测刷到 #102），准星判据 0.6 秒就能判。
+  - id: unstick
+    wave: W8
+    prio: P0
+    name: 挪一格（卡住最便宜的一招）
+    trigger: 连续 4 次"位置不动"
+    lever: actions.unstick() —— 8 方向 × 3 档距离，找能站的格走过去（不挖，只走）
+    accept: 位移 > 0.6 格
+    status: 通
+    evidence: >-
+      2026-10-27 两次实测（tools 内联调用，非纸面）：
+      · 从 (-230.8, 95.2, -14.6) 挪到 (-233.3, 96.2, -14.6)，**位移 2.55 格**；
+      · 从 (-265.6, 107.0, -22.5) 挪到 (-265.0, 108.2, -22.5)，**位移 1.34 格**。
+      机制：8 方向 × 3 档距离 × 3 层高度，找"能站 + 头顶是空气"的格子，只走不挖。
+      接线：健康阶梯 1 retry → 2 @goto → 3 界面守护 → **4 unstick** → 5 挖矿被劫持检测（重启）。
+  - id: team_speaker
+    wave: W8
+    prio: P1
+    name: 说话权（只让一个陪玩回应玩家）
+    trigger: 每次要说人话
+    lever: team.may_speak() → Speech(gate) / ChatIn(gate)
+    accept: 两个陪玩在线时，一句话只出现一条回复；另一人日志是 heard_defer
+    status: 通
+    evidence: >-
+      2026-10-27 11:4x 双实例实测（tools/_team_live.py）：Buddy(playmate) 与 Buddy2(guard)
+      同时在线，发一条**不带 to** 的 say 请求 ⇒ `said_1=["集合点名"]`、`said_2=[]`、
+      `panel_req_1=1`、`panel_req_2=0` ⇒ 只有说话权持有者执行，另一个只记 heard_defer。
+      掉线场景由 tools/_team_test.py 覆盖（Buddy 心跳过期后 Buddy2 自动接话权）。
+  - id: team_claim
+    wave: W8
+    prio: P1
+    name: 任务认领（别抢同一件活）
+    trigger: 长活开始前（get/mine/build/supply/hero）
+    lever: team.claim(key, ttl=120s)；作业结束/取消/超预算时释放
+    accept: 同一条请求只产生一个 job_start，另一个是 claim_denied
+    status: 通
+    evidence: >-
+      键：get:<item> / mine:x,y,z / build:x,y,z / supply:<item> / hero（租约 120 秒，
+      到期自动放行，防"人崩了任务永远占着"）。
+      双实例实测（tools/_team_live.py）：黑板里 `claims` 只有一条 `mine:-273,104,-18 / by Buddy`，
+      没有出现两个人同时占同一件活；单元测试覆盖"先到先得 / 释放后放行 / 租约过期放行"三条。
+  - id: team_formation
+    wave: W8
+    prio: P2
+    name: 编队站位（绝不站进同伴身体）
+    trigger: 跟随时
+    lever: team.slot(player_pos) 环上按编号分槽（队长 2.2 格、其余 ≥3.1 格）+ min_sep ≥1.6
+    accept: 同伴间距 ≥1.6 格，且没人站在玩家那一格
+    status: 通
+    evidence: >-
+      起因就是今天的卡死（两人同格 ⇒ 准星打到人 ⇒ 挖不动）。
+      修法两步：① `park_point` 跳过同伴占用的格子；② 编队模式下方位角**直接取自己的槽位**
+      （第一版按"自己相对玩家的方位"算，两个陪玩都在玩家同侧时会算出同一格，
+      实测两次相距 0.92 格 → 复核失败）。
+      修后双实例实测：两人相距 **8.64 格**（各自跟在玩家两侧），PASS。
+  - id: agent_ds
+    wave: W8
+    prio: P1
+    name: DeepSeek agent（一句话 → 一串工具调用）
+    trigger: 收到 free 请求 / 面板里"没被规则听懂"的话
+    lever: companion/agent.py —— 原生 tool_calls 循环（最多 10 步、110 秒预算、长活走 runner）
+    accept: 端点可用时按工具循环收敛；不可用时降级 NLU+规则且仍回一句话
+    status: 通
+    evidence: >-
+      真模型实测（DeepSeek `deepseek-flash`，2026-10-27 12:35，tools/_agent_ds_test.py）：
+      · 「把面前这块挖掉」→ macro_mine + getBlockAt 核验，**玩家正对着的那一格变空气**（9.9 秒 / 2 步）；
+      · 「跟我来」→ macro_follow_player，距离 26.8 → **0.41 格**（14.6 秒 / 1 步）；
+      · 「我饿了」→ @food 拿不到就如实说「这个我一时办不成」，不再闷头空转（220 秒太长，见 §7）。
+      ⚠️ 第一次联通就栽在一个默认值上：DeepSeek 的 `thinking` **默认 enabled**，`max_tokens`
+      会先被 reasoning 吃掉 ⇒ 返回 200、`usage` 有数、`message.content` 却是空串。
+      现在显式 `thinking:{type:"disabled"}`（要推理再加 `--thinking`）。
+      脚本化端点（tools/_fake_llm.py --selftest --mode native）仍然每次 CI 都跑。
+  - id: launcher_v2
+    wave: W8
+    prio: P2
+    name: 控制台 v2（数量/参与度/组队/DS/状态表/快捷指令）
+    trigger: 双击 dist/Buddy.exe
+    lever: launcher/buddy_app.py → PyInstaller onefile（11.7 MB）
+    accept: 自检通过 + 状态表能读出每个陪玩的在线/忙/位置/说话权
+    status: 半通
+    evidence: >-
+      --selftest → OK（3 个实例的端口/设置/请求通道全部就绪；free 请求走 agent 而不是复读）。
+      状态表数据源 = runs/team/board.json + 各实例日志尾部。GUI 还没人点过一遍。
+  - id: tile_windows
+    wave: W8
+    prio: P0
+    name: 窗口平铺（遮挡 = 准星冻结）
+    trigger: 多开时
+    lever: tools/_tile_windows.py（854×480 网格，两两不重叠）
+    accept: 所有可见 MC 窗口重叠面积 = 0
+    status: 通
+    evidence: >-
+      实测 1707×1067 屏、2 个窗口：before overlap=0（移开之后）→ after overlap=0。
+      起因：Buddy 868×517 的中心被 Buddy2 584×357 完全盖住时，命令能执行、聊天能打印，
+      但准星不推进（Mining aborted progress=-0.10）。
+  - id: melee_clear
+    wave: W8
+    prio: P0
+    name: 近战护主（自己打，不靠 @hero 乱跑）
+    trigger: 玩家 8 格内有敌对生物
+    lever: actions.clear_near() —— 先换武器(scan_hotbar) → 逼近 → mouseClick(left) → 退半步等冷却 → hp≤10 收手
+    accept: 玩家 radius 内敌对数量下降，且自己没死
+    status: 半通
+    evidence: >-
+      `@hero` 的两个毛病被量化：跑远追怪 + `Pillaring up to y=71`（夜间 4 → 8 只）。
+      自己实现后实测（召唤 2 只僵尸，normal，跑完还原 peaceful+day）：
+      · 首版站着连挥：逼近 1.92 格，僵尸 17→13→9，**杀掉 1 只但自己 20 → 6** 被迫收手；
+      · 加"退半步 + 先换武器"后：**8.5 秒杀掉 1 只**，自己 20 → 8.17 收手，8 次攻击全命中。
+      卡点：热键栏只有木镐（2 点伤害），`@get wooden_sword` 失败
+      （AltoClef `MOVEMISMATCH holding=oak_planks want=stick`）⇒ 还差配剑 + 穿甲才能"持续护主"。
+  - id: job_stall
+    wave: W8
+    prio: P0
+    name: 作业期卡死检测（原来这块是空白的）
+    trigger: 作业跑满 45 秒且位移 < 1.5 格
+    lever: commander.job_stall_check() → cancel_job → 健康阶梯（挪一格 / 重启）
+    accept: 作业卡死能被取消，且健康阶梯接手
+    status: 半通
+    evidence: >-
+      血证：`session_test --minutes 3` 报 2 次 `frozen45s`，而健康阶梯**一声没吭** ——
+      因为 `step()` 在 `job_running()` 分支里直接 return，`health()` 根本不会被调用。
+      已接上检测；重启身体后同一套会话回归 **PASS（8 请求 / 0 事故）**。
+      但这一轮 PASS 是"重启后本来就好"，检测本身还没被真实卡死触发过 ⇒ 记半通。
+
+
+
+# ── 2026-10-27 白天（见 docs/RUN-2026-10-27.md） ────────────────────────────
+notes_2026_10_27:
+  - >-
+    回归（同一客户端、真实地图）：能力 15 项 12 通 / 3 半通（supply、hero、guard）；
+    新增 caps_team 8 项里 5 项转通（aim_alive / tile_windows / team_speaker / team_claim /
+    team_formation，后三项由 tools/_team_live.py 双实例实测背书）。
+  - >-
+    11:29 session_test --minutes 4 → PASS（10 条请求 / 0 次阻断性事故）。
+  - >-
+    验收台：_fastlane_test（交互/取消/退避）、_team_test（协作四条规则纯逻辑）、
+    _team_live（两个真陪玩）、_move_probe（走路 vs 挖矿分开测）、_tile_windows（平铺，
+    遮挡会让准星冻结）、_supply_probe（递东西落点）。
+  - >-
+    多实例独有的坑：launcher.ensure_settings() 以前每次重新生成 mcpAuthToken ⇒ 磁盘 token
+    与运行中客户端的 token 不一致 ⇒ 指挥层 HTTP 401（表现为「身体活着但指挥不动」）。
+    现在「存在就不改」。tools/buddy_body.py 支持 --index/--name 单独重启第 N 个客户端。
+  - >-
+    DeepSeek：config/ai.json（或环境变量 BUDDY_AI_KEY / DEEPSEEK_API_KEY，或控制台 AI 区）
+    填 api_key 即启用；模型 deepseek-flash，端点 https://api.deepseek.com。没 key 时 agent
+    自动降级 NLU+规则，仍然动手、仍然回一句话。
+
+# ── W9 HOOK 层（2026-10-27 晚，operator 指正后的正确姿势） ──────────────────
+caps_hook:
+
+  - id: hook_layer
+    wave: W9
+    prio: P0
+    name: 决策层 hook（不重造能力）
+    trigger: 需要"合成/交付/存箱/睡觉/找结构"这类 AltoClef 本来就会的事
+    lever: Py4jEntryPoint 六个薄封装 → MCP 工具 listCommands / obtainableItems /
+           obtainItem / runCommandText / takeControl / userTask（另加 clickUiSlot、
+           pickupFromContainer，共 85 个工具）
+    accept: 新 jar 起来后 hook 工具存在，且能列出它的能力面
+    status: 通
+    evidence: >-
+      jar 换成 `unionclef-...-buddy6.jar` 后实测（2026-10-27 22:07）：
+      `listCommands()` 回 **59 条**内建命令（我们以前手抄的只有 40 条，漏了 give/pearl/shoot/
+      sign/shift/dummy/check_player/agent…）；`obtainableItems()` 回 **683 种可获取资源**；
+      `hook.available()` True；`takeControl(true)` 能一键停掉它自己的任务链（实测把一条
+      跑偏的 PickupFromContainerTask 停掉，userTask 立刻变空）。
+  - id: craft_via_hook
+    wave: W9
+    prio: P0
+    name: 合成（走 AltoClef 的 ResourceTask）
+    trigger: 收到 {"kind":"get"} 请求 / AI 调 obtainItem
+    lever: TaskCatalogue.getItemTask(name,n) + _mod.runUserTask(task)
+    accept: 背包里该物品数量 +N
+    status: 通
+    evidence: >-
+      2026-10-27 22:0x 实测：`hook.obtain("wooden_sword",1)` → userTask 显示
+      `<Doing stuff in crafting_table container: [[wooden_sword]]>` → **25 秒后背包 0 → 1**。
+      ⚠️ 同一天早先用 `@get wooden_sword` 失败（`MOVEMISMATCH holding=oak_planks want=stick`）——
+      那次是命令链的手持切换问题；直接 runUserTask(ResourceTask) 走的是"到工作台合成"的正路。
+  - id: player_inventory
+    wave: W9
+    prio: P2
+    name: 读玩家背包
+    trigger: 验收 / 调试（"东西到底到没到玩家手里"）
+    lever: RCON `data get entity <p> Inventory`（会被截断）与 `clear <p> <item> 0`（精确计数）
+    accept: 能读出条目；精确数量用 clear…0
+    status: 通
+    evidence: >-
+      companion/actions.py 的 `player_inventory()` / `count_player_item()` 都接好了；
+      RCON 不通时返回 {ok:false} 不抛异常。⚠️ 这是**上帝视角**（客户端看不到别人的背包），
+      与"陪玩自己能感知的东西"要分开写。
+  - id: move_item
+    wave: W9
+    prio: P2
+    name: 背包内挪物品
+    trigger: 需要把某格东西挪到另一格（AltoClef 只有 selectHotbar）
+    lever: clickUiSlot ×2（PICKUP → PICKUP），前后读 getOpenScreen 核验
+    accept: 源槽与目标槽的内容都变了
+    status: 通
+    evidence: >-
+      实测（2026-10-27 22:2x，先把箱子界面开起来）：`move_item(28 -> 9)` 之前 28 号槽是
+      `minecraft:stick`、9 号空；两下 PICKUP 之后 **28 空、9 是 stick** ⇒ 真挪动。
+      两道保护都是必需的：①没界面时 `clickUiSlot` **假成功**回 ok（所以先查 getOpenScreen.open）；
+      ②两个槽都空时返回 `nothing_to_move` 而不是失败（第一版就因此误报"点击没生效"）。
+      顺带验证了 **AltoClef 自己的 `deposit`**（hook.run("deposit oak_planks"/"coal")）：东西真的进了箱子。
+  - id: container_take
+    wave: W9
+    prio: P2
+    name: 从容器精确取物
+    trigger: 需要"从箱子里取 3 个铁锭"
+    lever: hook.pickup_from_container(pos,item,n) → AltoClef PickupFromContainerTask
+    accept: 背包里该物品 +n
+    status: 通
+    evidence: >-
+      实测（2026-10-27 22:2x）：先 `hook.obtain("chest",1)`（它自己补齐木板并开工作台合成，
+      45 秒拿到箱子）→ `hook.run("place chest")` 放在 (-268,105,-22) → `deposit oak_planks`
+      存进去 → `hook.pickup_from_container(同坐标, "oak_planks", 1)` ⇒ **4 秒内木板回到 0 → 1**。
+      整条链（合成箱子 → 放 → 存 → 取）都没自己写一格点击逻辑，全是 hook AltoClef 的任务/命令。
+
+# ── Round 1（2026-10-27 晚）：判据基建，**状态一律未改** ────────────────────
+notes_round1_gate:
+  - >-
+    新增 `tools/companion_gate.py`：离线 9 项（模块导入/能力表 schema/规则规划器/礼仪闸/
+    自然语言/说话礼貌/队伍规则/角色闸/任务层）+ 可选 --require-live，0.65 秒，写 runs/gate/last.json。
+    指挥层此前没有"改完先过闸"，这是它的第一道。
+  - >-
+    礼仪闸从 2 条加到 5 条并加计数：同格（此前被"贴脸"规则挡在前面、永远不可达）/贴脸/
+    正前方挡视线/不抢玩家正对着的方块（"看哪挖哪"豁免）/玩家在挖时退开。
+    计数每 30 秒写进 trace（`ev=etiquette`），是终局判据"挡路 0 / 抢块 0"的唯一数据源。
+    注意：`player_state.mining` 目前恒为 False —— 挥臂动画通道还没探明，规则已就位但不会触发。
+  - >-
+    `role` 变成真闸：guard 不再接 get/mine/build（点名 `to` 才接）；gatherer/builder/scout 各有白名单。
+    此前 role 只写进黑板，不影响任何决策。
+  - >-
+    护主前置配剑：`tasks._ensure_gear()` 先 `hook.obtain('wooden_sword')`（实测 25 秒）再 clear_near；
+    配不到照打，不阻断。`guard` / `melee_clear` 仍是半通，等 R2 活体读数。
+  - >-
+    `caps_test.py --repeat N`：N 次全通才记「通」，并写 streak（连中）。
+    本轮**没有活体**（服务端/客户端全 down），所以一条状态都没改。
+  - 详见 docs/PLAN-BEST-2026-10-27.md（对标分 6.3/10 与八轮计划）。
+
+# ── Round 2（2026-10-29）：活体读数 + 反射弧改造 ─────────────────────────────
+notes_round2_live:
+  - >-
+    身体真因（本次实测复核）：quickPlay 直接进服会让 mod **半初始化**（SlotHandler NPE、
+    py4j/MCP 都不起）⇒ 必须 `--no-connect` 起客户端 → 等 MCP → `ConnectToServer`。
+    `tools/buddy_body.py` 第 14 行早就写了这条，这次是踩了才信。真实 gameDir 是
+    `.minecraft`（mod 自己会重写 `altoclef/altoclef_settings.json`，看 mtime 就知道）。
+  - >-
+    服务端端口：`%MC_SERVERS%\paper-1.21.11` 的 `server-port` 改成 **25566**（对齐 warden
+    的 25565=1.20.4 / 25566=1.21.11 表），RCON 仍 25576。当前客户端 jar = buddy8（buddy9 备份在
+    %BUDDY_CLIENT%
+  - >-
+    活体读数（2026-10-29 16:03~16:10）：watch 通；body_alive 通（1.67s / 5.83 格）；
+    follow **2/2 通**（8.35→3.48、8.67→2.89）—— 修了"停靠容差过冲"：tol 1.8 会让它停在
+    离玩家 1.92 格（判据 2.5~5.2 判不通），现在 tol=0.9 + 过冲后退半步到 3.6。
+  - >-
+    supply 半通（比 10-27 更差，如实记录）：贴身 None（接近腿没到位）、落点离玩家 **3.56 格**、
+    玩家背包没多（cobblestone 5→5；我这边 78→81 反而捡到了）。原因：这次玩家站在 30 格外的坡上。
+  - >-
+    guard 半通：贴身腿通（1.78~2.14 格）；peaceful 下召不出怪 ⇒ 切 normal 召 2 只僵尸后，
+    **护主反射在 0.4 秒内抢占**（trace: reflex{kind:guard,dist:0.6,preempt:true} →
+    job_cancel "reflex: 玩家身边有怪"），跑完已还原 peaceful。
+  - >-
+    反射弧（operator：「反射弧也太长了」）—— 四处修 + 一处量化：
+    ① 两级观察：便宜 tick 只发 1 个 RPC（getGameState），全量感知每 3 tick 一次；
+    ② probe 从"每体素 3 次 RPC"降到 1 次（旧版 block+is_air 各自又调 block）；
+    ③ 停靠点缓存（玩家挪 <0.75 格且 <2 秒不重算）；
+    ④ **作业期间也跑反射**：护主（唯一允许抢占）/ 应答（不碰路）/ 眼神（手上有活时不排队）；
+    ⑤ 节拍 3Hz→6Hz（量化误差 333ms→167ms）。
+    读数（tools/reflex_latency.py，同一身体前后对比）：
+    full observe 324.9→**155.8ms** p50；请求→动作 643.3→**162.5ms** p50，p95 919→596ms（预算 600 PASS）。
+  - >-
+    新增工具：`tools/reflex_latency.py`（四段延迟）、`tools/interaction_score.py`（终局判据五数）、
+    `tools/_player_anim_probe.py`（找挥臂字段）、`caps_test --repeat N`（连中判据）；
+    `companion_gate.py` 增到 **12 项**（含活体工具面、反射弧单测、终局判据统计）。
+
+# ── 2026-10-29 下午（卡顿归因 + 变通 + 换图）────────────────────────────────
+notes_lag_2026_10_29:
+  - >-
+    卡顿归因（三层证据）：服务端 tps 20/20/20、mspt 1.8~2.1ms（不是它）；
+    hook 单次 getGameState p50 19ms / getBlockAt 2~27ms（平日不慢）；
+    但客户端一停帧，同一条 getGameState 实测冲到 2033ms、getBlockAt 930ms ⇒
+    **MCP 每个杠杆都要 `MinecraftClient.execute()` 排到主线程**，客户端卡一帧我们就卡一批。
+    归因结论：不是 hook 重，是"我们每 tick 要的次数 × 主线程排队"被放大。
+  - >-
+    每 tick 账单（实测）：getGameState 1 + playerDetail/pathStatus/getEntities 各 1 +
+    ray_block 10~28（逐体素 getBlockAt）+ park_point 20~40。
+    旧版 6Hz、每 3 tick 一次全量 ⇒ 峰值 ~70 RPC/全量 tick ≈ 140 RPC/s。
+  - >-
+    已落地五刀：① probe 3 RPC/体素 → 1；② 停靠点只在 dist>4.6 时算 + 缓存；
+    ③ 视线射线只在"转头>2° 或 0.8 秒"重算；④ 背压：观察 >600ms 连续两次 ⇒ 退回只读一帧状态 8 秒
+    （ev=observe_slow）；⑤ 健康阶梯不再把"没事干/看不到人"判成卡死（15 秒内没下发动作就豁免）。
+    读数：observe fast 77.5→16.2ms、full 155.8→42.4ms p50。
+  - >-
+    顺手修的四个真 bug：
+    (1) `buddy_body.SERVER` 写死 25565 ⇒ 换服后健康阶梯每次重启都连错端口（现在读 BUDDY_SERVER/--server）；
+    (2) 看不到玩家时只会 `no_player` 干等 ⇒ 新增 `reunion()`（@follow → RCON 读坐标 → @goto）；
+    (3) 断线后客户端停在主菜单，指挥层仍对着菜单空转 ⇒ 新增 `ensure_in_game()`；
+    (4) `runs/requests.jsonl` 里 10-27 的旧请求被重放 ⇒ 起批前必须清空（已清）。
+  - >-
+    变通（operator）：`tasks.NEEDS/feasible/pick_alternative` —— 没牛就不做皮甲（退铁/退木剑），
+    全不可行则 `mode=evade`（贴身不硬打）；`commander.idle_next()` 空闲时按 吃→武器→口粮 找活干。
+    gate 增到 13 项（含"没牛→否决皮甲"单测）。
+  - >-
+    换图：world_r3fresh / seed -5989383140109488165 / port 25566（旧 buddy_live1 保留）。
+    operator 新口径：先装备、只用真实夜晚、禁止把怪召到玩家身边（人不在操控）。
+  - 本轮所有改动**未经完整活体验收**（operator：理论上通即可），能力表状态不动。
+
+# ── 2026-10-29 夜（W6 收尾：RPC 批量化 / 屏外客户端 / 打包 / 三实例在线）────────
+notes_w6_2026_10_29:
+  - >-
+    **W6-4 RPC 批量化 ✅（已发 buddy11）**：Java 新增 `stateDigest()`（self/around/target/
+    最近玩家含 yaw+pitch/16 个最近实体/path 一次带回）、`getBlocksBatch(≤64)`、
+    `raycastFromPlayer(maxDist)` ⇒ MCP 工具 **85 → 88**（活体验到 88）。
+    Python 侧 `commander.observe(full)` 从 **4 次往返降到 2 次**（getGameState + stateDigest），
+    老 jar 自动回退旧路径；`body.rpc_count` 计数器 + `reflex_latency --json` 出 `w6_4` 判据。
+    读数：full observe **85.9 → 66.9ms p95**（预算 80）、**2 次 RPC/全量 tick**（预算 10）、
+    请求→动作 p95 512ms（预算 600 PASS）。
+  - >-
+    **顺带量化了一条老账**：MCP 每个杠杆都要排到客户端渲染线程，所以**单次调用 ≈ 一帧**。
+    同一份代码、不同时刻：客户端空闲时 getGameState **21ms**；客户端在忙/掉帧时
+    **50~100ms**（getBlockAt 24ms、getEntities 13ms 因为不走客户端线程）。
+    ⇒ 判据不能只看绝对毫秒（会被机器负载左右）：W6-4 的门是 **RPC 次数（结构）+ 折算延迟**
+    （`max(80ms, 3×单次往返)`）。想真正压延迟，先把**次数**压下来 —— 这也是今晚
+    `park_point` 与"玩家视线射线"两处改批量的原因（16~29 次 → 2 次）。
+  - >-
+    **W6-3 独立桌面 ❌ → 改走"屏外留 1px" ✅**（这是今晚最值钱的一条推翻）：
+    ① `subprocess.STARTUPINFO.lpDesktop` **被静默忽略**（子进程自报 GetThreadDesktop=Default）
+    ⇒ "陪玩界面默认不可见"这条承诺一直是假的；改成 `CreateProcessW` 直调才真生效。
+    ② 真生效之后，独立桌面上的客户端**渲染主循环会停**：探针 `lookingAt`（取自
+    `mc.crosshairTarget`，只在渲染帧更新）冻在同一个方块上；**同一探针在可见窗口上
+    从 oak_leaves 变到 grass_block（正常）** ⇒ 这是桌面的问题，不是瞄准的问题。
+    ⇒ 产品改成 `--offscreen`（默认桌面 + 挪到屏外只留 1px）：看不见、渲染照常。
+    读数：窗口 rect (1706,1066) vs 屏 1707×1067；`lookingAt` MISS → short_grass@-21,81,27。
+    顺带修：`EnumWindows/EnumDesktopWindows/SetWindowPos` 未设 argtypes ⇒ 64 位句柄被截成
+    32 位，窗口枚举永远 0 个（"窗口在但探针说没有"）。
+  - >-
+    **W3-1 三陪玩同时在线 ✅**：`tools/_three_live.py`（起 4 个真客户端 = 3 陪玩 + 1 真玩家
+    Xiaorun，3 个指挥层共用 `runs/team/board.json`）。读数：3 个都在游戏里 / 黑板 3 条心跳 /
+    两两间距 139.21 格（≥1.6 成立，本轮各自出生点未触发围人编队）/ **只有说话权者执行**
+    （Buddy 记 `panel_req`，Buddy2/3 记 `req_skip`）/ 语音只一份（hub 单进程，
+    三个指挥层 RSS 30.5~30.8MB，没有 230MB 模型三份）。
+    修：`--outdir`（同秒启动会把三条 trace 混进一个目录 ⇒ 不可归因）；
+    ④ 的判据原来把 `job_start` 也算"动手"⇒ 假 FAIL，现在只认 `panel_req`。
+  - >-
+    **W2-1 打包 ✅**：`dist/Buddy.exe` 74.7MB（PySide6 + sherpa dll + 全部 python 源码）。
+    `--selftest` OK；**`--run-py` 通道**（打包后 sys.executable 是 exe 自己，旧写法会把 GUI 再开一个）
+    ⇒ `Buddy.exe --run-py tools/buddy_body.py status` 在**没装 Python 的机器上**直接可用；
+    首启把 1088 个文件解到 exe 旁边（换版本刷新 tools/companion/policy/launcher，`config/` 只补缺）；
+    「一键准备」六步在打包态跑通（④ 允许 ❌）。新增 `tools/_first_run_probe.py` 当验收口。
+  - >-
+    **两个真 bug（顺手修的，都跟"看起来成功"有关）**：
+    (1) `buddy_body.restart` 用 `capture_output` ⇒ 独立桌面那条路用 CreateProcessW 起 java
+        （bInheritHandles=True）⇒ java 继承管道写端 ⇒ `subprocess.run` 等 EOF 白等 180 秒，
+        外面看就是"restart 卡死、不打印"；改 DEVNULL。
+    (2) `ensure_ingame` 旧循环每轮自己阻塞 ~65 秒（takeControl 12 + Connect 45 + sleep 8），
+        120 秒预算只跑得完 2 轮 ⇒ **客户端刚连上函数就超时返回 False**（实测 22:14:56 连上、
+        22:14:57 判 false）。改成"分轮：关屏→解暂停→下令→每 2 秒轮询 60 秒"，restart 38.3s 进服。
+    (3) `Agent(memory=self.memory)` 传的是 **dict**（`__init__` 里 `self.memory: dict = {}`），
+        而 `Agent` 要的是有 `.brief()` 的 `Memory` ⇒ 每次 say_text 都 `AttributeError` 被吞。
+  - >-
+    **⛔ 最贵的一条（20 分钟排查）：新客户端卡在「无障碍引导页」⇒ MCP 永不启动。**
+    `options.txt` 缺 `onboardAccessibility:false` 时，MC 1.20+ 首次启动停在
+    `AccessibilityOnboardingScreen`，`TitleScreen.init()` 不跑 —— 而模组是在那里
+    `Debug.logMessage("Global Init")` 并**启动 MCP 服务器**的（`mixins/EntryMixin.java`）。
+    现象极具误导性：日志停在"创建贴图集"、进程在、窗口在、`jstack` 主循环正常
+    （`RW: limitDisplayFPS`）、`mcp=False` 却零报错。**截屏是唯一快速判据**。
+    `core.tune_client()` 现在把 `onboardAccessibility:false`（＋ vsync/FPS）写进实例
+    options.txt，并接回「一键准备」③ ⇒ **新装机器不写这一条，陪玩 100% 起不来**。
+  - >-
+    **W6-2 长跑 ✅ 120 分钟达标**（`runs/longrun/20261030-003713/summary.json`）：
+    存活率 **1.0**（rc=0）、RSS **11.4 → 25.5MB（峰值 30.9，斜率 0.12MB/分，预算 1）**、
+    `error` 0 / `incident` 0 / `body_restart` 0 / `death` 0、trace **42199** 行。
+    跑的过程中挂出两条真 bug（都已修）：
+    (1) `screen_gate` 里 `w32` 未定义（import 的是 `win32_mc as _w32`）⇒ 每次"有界面要关"
+        都抛 NameError 被吞成 `screen_open{err}` ⇒ **界面永远关不掉**，而 GUI 开着时准星是死的；
+    (2) **死亡界面用 ESC 关不掉**（原版只有 Respawn 按钮）⇒ 客户端 hp=0、界面挂着、
+        指挥层每 2 秒发一次 ESC，外面看就是"它还活着但什么都不干"。现在认标题 → `respawnPlayer`，
+        长跑实测 **5/5 重生成功**（`death_respawn {ok:true, still_open:false}`）。
+    顺带给指挥层加了 `faulthandler.dump_traceback_later(180)` —— 以后卡住会自己 dump 全线程栈。
+  - >-
+    **✅ 已修（2026-10-30，buddy13）：手动挖掘"按下去但世界不动"—— 根因是原版输入与门，不是 tungsten。**
+    `MinecraftClient.doItemUse()` 末尾是
+    `handleBlockBreaking(currentScreen==null && !bl && attackKey.isPressed() && mouse.isCursorLocked())`
+    （反编译 `gfj.bv` 字节码核对）。没人点进去的客户端 `isCursorLocked()` 恒 false ⇒ 原版每 tick
+    `cancelBlockBreaking()` ⇒ 攻击键无效，队列跑满 300 tick 报 `Mining aborted … progress=-0.10`。
+    修法：`adris.altoclef.util.agent.HeadlessBreak`（breakQueue / placeQueue / miner 戳记三选一）
+    + `ClientTickMixin` 对**那一个** `isCursorLocked()` 调用点 `@Redirect` 返回 true；用户鼠标不被俘获。
+    开关 `-Daltoclef.headlessCursorGate=false`。**mixin 必须放 altoclef**：打包时
+    `_make_hybrid_jar.py --donor` 会把 tungsten 换成上游 jar，放 tungsten 等于没改。
+    实测：`mineBlock` 一格草方块 → `breakingProgress 0.3 → 0.9` → 1 秒内 `air`。
+    放置三连修（buddy14）：① `lookAt` 原来瞄方块**角点**（传方块整数 → 瞄 8 块共用的角，射线掠射、
+    命中谁看浮点边界；实测差两格）⇒ 改瞄块中心 + 新增 `lookAtPoint`；② `placeBlockAt` 只瞄一个面中心
+    （正好落在边界平面上，矮草/雪层吃掉射线）⇒ 每面 9 个采样点 + 沿法线内缩 0.02；③ `placeBlockLooking`
+    的 ok 是假的（空手也照发 / interactBlock 一返回就 true / 读帧缓存）⇒ 实时射线 + 非 BlockItem 直接拒
+    + `ok = 物品数变少 || 目标格由 air 变非 air`。实测 `placeBlockAt(-72,70,-18)` → placed:true、格子变 dirt。
+  - >-
+    **✅ 已修（2026-10-30，buddy15/16）：一次"没放上"有三种原因，以前全叫 `cooldown`。**
+    `BlockPlaceHelper.tryPlace` 只在两件事上回 false：4-tick 限速闸关着，或 `interactBlock`
+    没给 SUCCESS；上一版把两者写成 `cooldown: !sent` ⇒ 外面看到"限速八次、两秒，格子还是空的"
+    （实测 -81,69,26：8 次全 cooldown:true，spawn-protection=0 已排除）。现在分三类：
+    `cooldown:true` = 限速（等 150~250ms 重试，第 2 次常成）；`body_blocked:true` = **自己的身体
+    压着目标格**（玩家箱 x[64.7,65.3] z[-74.3,-73.7] 与格 x[65,66] z[-75,-74] 有 0.3 宽重叠，
+    原版不许把实心方块放进玩家身体里 ⇒ client 直接拒；退开半步就能放，**不是永久失败**）；
+    `permanent:true` = 这次点击 client 自己拒了（面/格子刚被改），别原地重试。
+    实测：站 (65.0,66.0,-74.0) 打 (65,66,-75) 四次全 sent:false；挪开一格同一格第一次就成 ——
+    老 mineflayer 栈的 `recenter()` 治的就是这条。修法两层：Java 在**点击之前**用
+    `world.doesNotIntersectEntities(null, shape.offset(x,y,z))` 先问"我是不是站在它里面"；
+    Python `actions.place_block` 用 `_step_aside()` 退 **0.9 格**（0.6 不够，玩家箱半宽就 0.3）
+    并**轮询到真的动了**（gotoXYZ 是寻路，睡 0.45 秒等于没退），还压着就**反方向**退 1.3 格，
+    两个方向都退不动就老实收手。live 验收（buddy16）：正常相邻格 `tries=1 placed=True`；
+    站在目标格里 → 原语 `{body_blocked:true, permanent:false}` → 第一次退不动、第二次反方向
+    退开 shift 0.5 → `tries=3` 放成。闸 ㉖/㉗ 用假 registry 钉住四种分流（不碰真身体）。
+  - >-
+    **✅ 已修（2026-10-30）：两个"装错版本"的默认值。** `tools/install_jar_now.py` 的默认 jar
+    写死 `...buddy3.jar` —— 发完 buddy15 照原样跑，它把**四天前的 buddy3** 拷进两个 mods 目录，
+    而 `latest.json`/sha/发布记录全说 buddy15；`launcher/core.py` 的 `DEFAULT_JAR` 写死
+    `...buddy14.jar`（每次发版都要手改，忘一次就是"面板起上一版代码"）。两处都改成读
+    `_releases/latest.json`，指针不在才回落本地构建产物。验收：不传 `--jar` 跑 install →
+    装的是 `buddy16`，两个 mods 目录 sha 与 `latest.json` 一致（`16497ad…`）。

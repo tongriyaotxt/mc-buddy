@@ -1,0 +1,13 @@
+# mc-buddy runtime dependencies (Python 3.11+)
+PyYAML>=6.0
+psutil>=5.9
+numpy>=1.24
+sounddevice>=0.4.6          # 录音（PortAudio）；没有麦克风也能跑，只是不能听
+mcrcon>=0.1.6               # RCON 客户端，import 名是 rcon（工具用它直读服务端）
+
+# 本地语音识别（可选：不装则回落到系统 SAPI / 只打字）
+sherpa-onnx>=1.10.0
+
+# 可选后端
+# faster-whisper           # 另一种 STT
+# cosyvoice                # 本地 TTS（需要 torch/torchaudio，比较重）

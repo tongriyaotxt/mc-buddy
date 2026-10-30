@@ -1,0 +1,20 @@
+{
+  "_comment": "语音引擎选型（2026-10-29 定稿：SenseVoice 单路识别 + SAPI 常驻 TTS）。改完重启指挥层生效。",
+  "tts": "auto",
+  "stt": "sherpa",
+  "sherpa_model_dir": "%MODELS%",
+  "cosyvoice_dir": "",
+  "volc_app_id": "",
+  "volc_token": "",
+  "input_device": "",
+  "silence_chunks": 6,
+  "vad_threshold": 0.012,
+  "tts_rate": 5,
+  "tts_volume": 100,
+
+  "_model_comment": "首启「取模型」用的来源（W2-2）。实测该 HF 仓库只有散文件、没有一体压缩包，所以走 repo 前缀抓 model.int8.onnx + tokens.txt；model_sha256 留空 = 下完靠'能否加载/能否识别'验收，不拿一个没核过的哈希去卡用户。",
+  "model_dest": "D:/models",
+  "model_repo": "https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main",
+  "model_url": "",
+  "model_sha256": "c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51"
+}

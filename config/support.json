@@ -1,0 +1,8 @@
+{
+  "_comment": "支持闭环（2026-10-29 operator：支持闭环）。默认全关；用户勾选后才会把诊断包发到下面这个地址。",
+  "enabled": false,
+  "endpoint": "",
+  "auto_crash": true,
+  "include": ["error.txt", "trace_tail.jsonl", "env.json", "last_plan.json"],
+  "note": "诊断包里不含密钥；endpoint 留空=只存本地 runs/crash/"
+}

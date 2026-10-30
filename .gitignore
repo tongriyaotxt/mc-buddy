@@ -1,0 +1,33 @@
+# ── 秘密与配置：真配置永不入仓 ────────────────────────────────────────────
+config/ai.json
+config/support.local.json
+.env
+.env.*
+!.env.example
+launcher/config.json
+launcher/paths.json
+
+# ── 运行产物 ────────────────────────────────────────────────────────────
+runs/
+replays/
+worlds/
+logs/
+build/
+dist/
+_releases/
+_publish/
+_copies/
+_worktrees/
+_refs/
+node_modules/
+.venv/
+.venv-laya/
+
+# ── Python / 编辑器 ─────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.idea/
+.vscode/
+*.log

@@ -1,0 +1,54 @@
+mc-buddy
+Copyright 2026 YG
+
+本产品包含由本仓库作者开发的软件，按 Apache License 2.0 授权（全文见 LICENSE）。
+This product includes software developed by the author of this repository,
+licensed under the Apache License, Version 2.0 (see LICENSE).
+
+────────────────────────────────────────────────────────────────────────
+一、模组侧（java/ 目录）
+────────────────────────────────────────────────────────────────────────
+
+`java/` 下的补丁是对 UnionClef（AltoClef + Tungsten 的整合 fork）的修改。
+UnionClef 以 **GPL-3.0** 分发，因此**这些补丁同样是 GPL-3.0**，并在本仓库公开其源码
+（这正是 GPL-3.0 对"分发二进制时须提供对应源码"的合规方式）。
+
+  · AltoClef            MIT         https://github.com/adrisjautakas/altoclef
+  · UnionClef（fork）   GPL-3.0     以其仓库 LICENSE 为准
+  · Tungsten / Baritone 见上游     https://github.com/kaptainwutax/tungsten
+
+⚠️ 已知不一致（上游遗留，非本项目引入）：UnionClef 仓库 `LICENSE` 为 GPL-3.0，
+   而 `fabric.mod.json` 里写 `MIT`。本仓库按**更严格的 GPL-3.0** 处理。
+
+────────────────────────────────────────────────────────────────────────
+二、运行期第三方（不 vendor 进本仓库，通过 pip 获取）
+────────────────────────────────────────────────────────────────────────
+
+  · PyYAML                  MIT         https://github.com/yaml/pyyaml
+  · psutil                  BSD-3       https://github.com/giampaolo/psutil
+  · numpy                   BSD-3       https://github.com/numpy/numpy
+  · sounddevice / PortAudio MIT         https://github.com/spatialaudio/python-sounddevice
+  · sherpa-onnx             Apache-2.0  https://github.com/k2-fsa/sherpa-onnx
+  · SenseVoice 模型         以模型仓库为准 https://github.com/FunAudioLLM/SenseVoice
+  · mcrcon                  LGPL-3.0    https://github.com/Conji/mcrcon
+
+可选（用户自装、本项目不分发）：
+  · CosyVoice2（本地 TTS）   Apache-2.0
+  · faster-whisper          MIT
+  · 火山/豆包 实时语音       商业条款（用户自备 key）
+
+────────────────────────────────────────────────────────────────────────
+三、不在本仓库内、也不由本项目分发
+────────────────────────────────────────────────────────────────────────
+
+  · Minecraft 客户端/服务端资源与商标 —— 归 Mojang / Microsoft，受 Minecraft EULA 约束
+  · Paper / PaperMC 服务端（GPL-3.0）—— 使用者自行下载
+  · Java 运行时 —— 使用者自行安装
+  · DeepSeek API —— 使用者自备密钥（本仓库不含任何密钥）
+
+────────────────────────────────────────────────────────────────────────
+四、文档与数据
+────────────────────────────────────────────────────────────────────────
+
+`docs/` 下的文字：CC BY 4.0。`companion/capabilities.yaml` 里的读数：CC BY 4.0。
+仓库内**不含**任何回放数据、存档、日志（它们都在开发机上，且含本机路径）。
