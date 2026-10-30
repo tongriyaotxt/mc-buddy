@@ -2,7 +2,7 @@
 
 **A Minecraft companion AI that decides for itself what needs doing.**
 
-> for my brother xiaorun — so he never has to play alone.
+> for my little brother Xiaorun (晓润) — so he never has to play alone.
 
 This is not a scripted bot, and not a chat model wearing a robot suit. There are no learned
 weights in the decision path:

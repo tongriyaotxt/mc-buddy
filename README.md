@@ -2,7 +2,7 @@
 
 **一个会自己决定"该干什么"的 Minecraft 陪玩 AI。**
 
-> for my brother xiaorun — 写给我兄弟 Xiaorun：他一个人玩的时候，服务器里至少有个活人。
+> for my little brother Xiaorun — 写给我弟弟晓润：他一个人玩的时候，服务器里也有个伴。
 
 它不是一个"脚本机器人"。它的脑子里没有神经网络权重，也没有漂亮的对话模型幻觉：
 
